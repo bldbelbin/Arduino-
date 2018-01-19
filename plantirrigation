@@ -1,0 +1,171 @@
+String writeAPIKey = "dCFFuwutXLRoHKQNqbIXrP";  //Put your ThingSpeak Write API key here.
+unsigned int interval = 60000;  //Update every Minute 
+long int now=0, previous=-50000; //Used to hold time variables.
+#define DST_IP "maker.ifttt.com"  //Thingspeak Server
+
+//LCD display
+//Load libraries
+#include <Wire.h>
+#include <LCD.h>
+#include <LiquidCrystal_I2C.h>
+
+ //Define address for the Serial LCD display.
+#define I2C_ADDR  0x27  //If 0x3f doesn't work change this to 0x27
+#define BACKLIGHT_PIN  3
+
+//Initialise the Serial LCD.
+LiquidCrystal_I2C lcd(I2C_ADDR, 2,1,0,4,5,6,7); //These pin numbers are hard coded in on the serial backpack board.
+
+// Moisture sensor
+const int moistureSensor = A3; // moisture sensor is plugged into A3 on the arduino
+int data; // Used to store data from user
+int waitTime = 1000;
+
+
+// water pump
+int pumpPin = 8; // water pump
+int waterTime = 2; // 10 seconds watering time
+
+
+void setup() { // put your setup code here, to run once:
+  // Moisture Sensor
+    Serial.begin(9600);
+
+    // LCD display
+    lcd.begin (16,2);     //Initalize the LCD.
+    lcd.setBacklightPin(3,POSITIVE);//Setup the backlight.
+    lcd.setBacklight(HIGH); //Switch on the backlight.
+    lcd.clear();
+    lcd.setCursor(0,0);   //go to first column  and first line (0,0)
+    lcd.print("Hello - Arnold");     //Print at cursor Location
+    lcd.setCursor(5,1);   //goto first column and second line 
+    delay(1000);  
+
+    // pump
+    pinMode(pumpPin, OUTPUT); // pump is an output
+
+  // Wifi 
+  Serial.begin(9600);  // Open serial Connection to Computer
+  Serial1.begin(115200);  // Open serial Connection to ESP8266 
+  Serial.println("IFTTT Maker");
+  Serial1.println("AT+RST");  //Issue Reset Command
+  Serial.println("AT+RST");
+  delay(1000);
+
+  //DEBUG LOOP- display ESP output to serial Monitor.
+  while (Serial1.available()) { 
+  Serial.println(Serial1.read());
+  }
+  Serial.println("AT+CWMODE=1"); 
+  Serial1.println("AT+CWMODE=1");  //Set single client mode.
+  delay(5000);
+
+  Serial.println("AT+CIFSR");
+  Serial1.println("AT+CIFSR"); //Display IP Information
+  
+  //DEBUG LOOP- display ESP output to serial Monitor.
+  while (Serial1.available()) {  
+  Serial.println(Serial1.read());
+  }
+  delay(1000);
+
+  Serial.println("AT+CIPMUX=0");  
+  Serial1.println("AT+CIPMUX=0");  //Sets up Single connection mode.
+  delay(1000);
+
+  //DEBUG LOOP- display ESP output to serial Monitor.
+  while (Serial1.available()) { 
+    Serial.write(Serial1.read());
+  }
+  delay(1000);
+ 
+}
+void loop() { // put your main code here, to run repeatedly:
+  
+    // Moisture
+    delay(waitTime);
+    data = analogRead(moistureSensor);
+    data = map(data, 0, 1023, 0, 100); // data map to display percentage to LCD
+    //Serial.println(data);
+
+    // LCD
+    for(int count = 0; count < 15; count++) {
+    lcd.clear();
+    lcd.setCursor(7,0);
+    lcd.print(data); // prints data from moisture sensor
+    delay(500);
+      }
+
+    // pumpPin
+    if (analogRead (moistureSensor <= 60)) { // reads moisture Sensor and if below 60 then water pump turns on
+    digitalWrite(pumpPin, HIGH);
+    delay(waterTime*1000); // on for 10 seconds
+    digitalWrite(pumpPin, LOW);
+    delay (120000);
+    //delay(86400*1000); //delays watering for a day
+    
+    
+    } else if (analogRead (moistureSensor >= 65)) { // if moisture Sensor reads above 65 then water pump stays off
+        digitalWrite(pumpPin, LOW);
+      
+    }
+    
+    
+// IFTTT
+  now=millis(); //Get the current time.
+//Check to see if it's time to run.
+if(now - previous >= interval){  
+  previous = now; 
+  Serial.println("Running Update");
+  updateThingSpeak();
+   } 
+}
+
+void updateThingSpeak(){ 
+  
+  int moisture = analogRead(moistureSensor); //Read the moisture
+  
+   //Builds the connection string for the ESP8266
+    String cmd = "AT+CIPSTART=\"TCP\",\"";
+    cmd += DST_IP;
+    cmd += "\",80";
+    Serial1.println(cmd);  //Run the command
+    Serial.println(cmd);    //Print this to the debug window
+    delay(1000);
+
+    //DEBUG LOOP- display ESP output to serial Monitor.
+    while (Serial1.available()) {
+    Serial.write(Serial1.read());
+    } 
+
+   //I NEED TO UPDATE THIS IF STATEMENT TO MAKE SURE CONNECTION WORKED
+  //if (client.connect(thingSpeakAddress, 80)){         
+    String httpcmd="GET /trigger/arnold_the_plant/with/key/dCFFuwutXLRoHKQNqbIXrP?";
+    httpcmd += "value1=";
+    httpcmd += moisture;
+    httpcmd += " HTTP/1.1\r\n";
+    httpcmd += "Host: maker.ifttt.com\r\n";
+    httpcmd += "Connection: close\r\n\r\n";
+    
+    Serial.print("AT+CIPSEND=");
+    Serial.println(httpcmd.length());
+  
+    Serial1.print("AT+CIPSEND=");
+    Serial1.println(httpcmd.length());
+    delay(1000);
+
+    Serial.print(">");
+    Serial1.println(httpcmd);
+    Serial.println(httpcmd);
+    delay(3000);
+
+    //DEBUG LOOP- display ESP output to serial Monitor.
+     while (Serial1.available()) {
+      Serial.write(Serial1.read());
+      }
+   
+    Serial.println("AT+CIPCLOSE");
+    Serial1.println("AT+CIPCLOSE"); //Close the Web Connection
+
+
+   } // end of void loop
